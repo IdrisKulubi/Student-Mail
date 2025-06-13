@@ -11,6 +11,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useRouter, useFocusEffect } from 'expo-router';
+import AuthDebug from '../../components/AuthDebug';
 
 interface UserStats {
   totalXp: number;
@@ -23,6 +25,7 @@ interface UserStats {
 
 export default function DashboardScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const [stats, setStats] = useState<UserStats>({
     totalXp: 0,
     currentStreak: 0,
@@ -32,6 +35,30 @@ export default function DashboardScreen() {
     moodEntries: 0,
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  const fetchUserProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data: profile, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user profile:', error);
+      } else {
+        setUserProfile(profile);
+      }
+    } catch (error) {
+      console.error('Error checking user profile:', error);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   const fetchUserStats = async () => {
     if (!user) return;
@@ -80,14 +107,17 @@ export default function DashboardScreen() {
   };
 
   useEffect(() => {
+    fetchUserProfile();
     fetchUserStats();
   }, [user]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchUserStats();
+    await Promise.all([fetchUserProfile(), fetchUserStats()]);
     setRefreshing(false);
   };
+
+  const needsProfileSetup = !profileLoading && (!userProfile || !userProfile.university || !userProfile.major);
 
   const StatCard = ({ icon, title, value, color }: {
     icon: string;
@@ -118,6 +148,14 @@ export default function DashboardScreen() {
     </TouchableOpacity>
   );
 
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('Dashboard focused, refreshing profile data');
+      fetchUserProfile();
+      fetchUserStats();
+    }, [])
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -137,6 +175,32 @@ export default function DashboardScreen() {
             {stats.unreadEmails > 0 && <View style={styles.notificationBadge} />}
           </TouchableOpacity>
         </View>
+
+        {/* Profile Setup Banner */}
+        {needsProfileSetup && (
+          <View style={styles.setupBanner}>
+            <View style={styles.setupBannerContent}>
+              <View style={styles.setupBannerIcon}>
+                <Ionicons name="person-add" size={24} color="#4F46E5" />
+              </View>
+              <View style={styles.setupBannerText}>
+                <Text style={styles.setupBannerTitle}>Complete Your Profile</Text>
+                <Text style={styles.setupBannerSubtitle}>
+                  Add your university and major to get personalized recommendations
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.setupBannerButton}
+                onPress={() => {
+                  router.push('/profile-setup');
+                }}
+              >
+                <Text style={styles.setupBannerButtonText}>Complete</Text>
+                <Ionicons name="chevron-forward" size={16} color="#4F46E5" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Stats Grid */}
         <View style={styles.statsContainer}>
@@ -220,6 +284,9 @@ export default function DashboardScreen() {
           </Text>
           <Text style={styles.quoteAuthor}>- Winston Churchill</Text>
         </View>
+
+        {/* Debug Info - Remove this after testing */}
+        <AuthDebug />
       </ScrollView>
     </SafeAreaView>
   );
@@ -395,5 +462,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#B45309',
     fontWeight: '500',
+  },
+  setupBanner: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginHorizontal: 20,
+    marginBottom: 32,
+  },
+  setupBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  setupBannerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  setupBannerText: {
+    flex: 1,
+  },
+  setupBannerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  setupBannerSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  setupBannerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#4F46E5',
+  },
+  setupBannerButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#4F46E5',
+    marginRight: 4,
   },
 });

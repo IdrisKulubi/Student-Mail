@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,46 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase';
 
 export default function LoginScreen() {
   const { signInWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
+
+  useEffect(() => {
+    // Test Supabase connection
+    const testConnection = async () => {
+      try {
+        const { data, error } = await supabase.from('users').select('count').limit(1);
+        if (error) {
+          console.error('Supabase connection error:', error);
+          setConnectionStatus('error');
+        } else {
+          console.log('Supabase connected successfully');
+          setConnectionStatus('connected');
+        }
+      } catch (error) {
+        console.error('Connection test failed:', error);
+        setConnectionStatus('error');
+      }
+    };
+
+    testConnection();
+  }, []);
 
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
       await signInWithGoogle();
+      // Success will be handled by the auth context
     } catch (error: any) {
-      Alert.alert('Sign In Error', error.message || 'Failed to sign in with Google');
+      console.error('Login error:', error);
+      Alert.alert(
+        'Sign In Error', 
+        error.message || 'Failed to sign in with Google. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoading(false);
     }
@@ -73,6 +102,54 @@ export default function LoginScreen() {
             </>
           )}
         </TouchableOpacity>
+
+        {/* Connection Status */}
+        <View style={styles.connectionStatus}>
+          <View style={styles.connectionIndicator}>
+            {connectionStatus === 'checking' && (
+              <>
+                <ActivityIndicator size="small" color="#6B7280" />
+                <Text style={styles.connectionText}>Connecting to server...</Text>
+              </>
+            )}
+            {connectionStatus === 'connected' && (
+              <>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={[styles.connectionText, { color: '#10B981' }]}>Connected</Text>
+              </>
+            )}
+            {connectionStatus === 'error' && (
+              <>
+                <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                <Text style={[styles.connectionText, { color: '#EF4444' }]}>Connection Error</Text>
+              </>
+            )}
+          </View>
+        </View>
+
+        {/* Debug: Test OAuth URL Generation */}
+        {connectionStatus === 'connected' && (
+          <TouchableOpacity 
+            style={styles.debugButton}
+            onPress={async () => {
+              try {
+                const { data, error } = await supabase.auth.signInWithOAuth({
+                  provider: 'google',
+                  options: {
+                    redirectTo: 'https://your-project.supabase.co/auth/v1/callback',
+                  },
+                });
+                console.log('Debug OAuth test:', { data, error });
+                Alert.alert('Debug', `OAuth URL: ${data?.url || 'No URL generated'}\nError: ${error?.message || 'None'}`);
+              } catch (err: any) {
+                console.error('Debug OAuth error:', err);
+                Alert.alert('Debug Error', err.message);
+              }
+            }}
+          >
+            <Text style={styles.debugButtonText}>🔧 Test OAuth (Debug)</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Footer */}
         <Text style={styles.footer}>
@@ -161,5 +238,32 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     textAlign: 'center',
     lineHeight: 18,
+  },
+  connectionStatus: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  connectionIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  connectionText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 6,
+  },
+  debugButton: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  debugButtonText: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 }); 

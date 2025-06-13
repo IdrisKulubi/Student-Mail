@@ -12,10 +12,11 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
-import { router } from 'expo-router';
+import { useRouter } from 'expo-router';
 
 export default function ProfileSetupScreen() {
-  const { user } = useAuth();
+  const { user, refreshUserProfile } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     university: '',
@@ -25,33 +26,87 @@ export default function ProfileSetupScreen() {
   });
 
   const handleSave = async () => {
-    if (!formData.university || !formData.major) {
+    // Validate required fields
+    if (!formData.university?.trim() || !formData.major?.trim()) {
       Alert.alert('Required Fields', 'Please fill in your university and major');
+      return;
+    }
+
+    // Validate graduation year if provided
+    if (formData.graduationYear && (isNaN(parseInt(formData.graduationYear)) || parseInt(formData.graduationYear) < 2020 || parseInt(formData.graduationYear) > 2030)) {
+      Alert.alert('Invalid Year', 'Please enter a valid graduation year between 2020 and 2030');
       return;
     }
 
     try {
       setLoading(true);
-      const { error } = await supabase
+      console.log('Saving profile data:', formData);
+      
+      // First, check if user exists in our users table
+      const { data: existingUser, error: fetchError } = await supabase
         .from('users')
-        .update({
-          university: formData.university,
-          major: formData.major,
-          graduation_year: formData.graduationYear ? parseInt(formData.graduationYear) : null,
-          career_goals: formData.careerGoals,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user?.id);
+        .select('*')
+        .eq('id', user?.id)
+        .single();
 
-      if (error) {
-        throw error;
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error fetching user:', fetchError);
+        throw new Error('Failed to check user profile');
       }
 
-      Alert.alert('Success', 'Profile updated successfully!', [
-        { text: 'OK', onPress: () => router.replace('/(tabs)') }
-      ]);
+      const profileData = {
+        university: formData.university.trim(),
+        major: formData.major.trim(),
+        graduation_year: formData.graduationYear ? parseInt(formData.graduationYear) : null,
+        career_goals: formData.careerGoals?.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let result;
+      if (!existingUser) {
+        // Create new user profile
+        result = await supabase
+          .from('users')
+          .insert({
+            id: user?.id,
+            email: user?.email,
+            full_name: user?.user_metadata?.full_name || user?.user_metadata?.name || null,
+            avatar_url: user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null,
+            school_domain: user?.email?.split('@')[1] || null,
+            total_xp: 0,
+            current_streak: 0,
+            longest_streak: 0,
+            ...profileData,
+            created_at: new Date().toISOString(),
+          });
+      } else {
+        // Update existing user profile
+        result = await supabase
+          .from('users')
+          .update(profileData)
+          .eq('id', user?.id);
+      }
+
+      if (result.error) {
+        console.error('Database error:', result.error);
+        throw result.error;
+      }
+
+      console.log('Profile saved successfully');
+      
+      // Refresh the user profile data in the auth context
+      await refreshUserProfile();
+      
+      // Navigate directly without showing alert to avoid timing issues
+      console.log('Navigating to main app after profile completion');
+      router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to update profile');
+      console.error('Profile save error:', error);
+      Alert.alert(
+        'Error', 
+        error.message || 'Failed to save profile. Please try again.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoading(false);
     }
@@ -127,13 +182,6 @@ export default function ProfileSetupScreen() {
           ) : (
             <Text style={styles.saveButtonText}>Complete Setup</Text>
           )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={() => router.replace('/(tabs)')}
-        >
-          <Text style={styles.skipButtonText}>Skip for now</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -213,13 +261,5 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-  },
-  skipButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  skipButtonText: {
-    color: '#6B7280',
-    fontSize: 16,
   },
 }); 
