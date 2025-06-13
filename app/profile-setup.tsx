@@ -11,8 +11,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 import { useRouter } from 'expo-router';
+import { completeUserProfile } from '../actions';
+import { supabase } from '../lib/supabase';
 
 export default function ProfileSetupScreen() {
   const { user, refreshUserProfile } = useAuth();
@@ -38,59 +39,21 @@ export default function ProfileSetupScreen() {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'User not found. Please sign in again.');
+      return;
+    }
+
     try {
       setLoading(true);
       console.log('Saving profile data:', formData);
       
-      // First, check if user exists in our users table
-      const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user?.id)
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error fetching user:', fetchError);
-        throw new Error('Failed to check user profile');
-      }
-
-      const profileData = {
-        university: formData.university.trim(),
-        major: formData.major.trim(),
+      await completeUserProfile(user.id, {
+        university: formData.university,
+        major: formData.major,
         graduation_year: formData.graduationYear ? parseInt(formData.graduationYear) : null,
-        career_goals: formData.careerGoals?.trim() || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      let result;
-      if (!existingUser) {
-        // Create new user profile
-        result = await supabase
-          .from('users')
-          .insert({
-            id: user?.id,
-            email: user?.email,
-            full_name: user?.user_metadata?.full_name || user?.user_metadata?.name || null,
-            avatar_url: user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null,
-            school_domain: user?.email?.split('@')[1] || null,
-            total_xp: 0,
-            current_streak: 0,
-            longest_streak: 0,
-            ...profileData,
-            created_at: new Date().toISOString(),
-          });
-      } else {
-        // Update existing user profile
-        result = await supabase
-          .from('users')
-          .update(profileData)
-          .eq('id', user?.id);
-      }
-
-      if (result.error) {
-        console.error('Database error:', result.error);
-        throw result.error;
-      }
+        career_goals: formData.careerGoals,
+      });
 
       console.log('Profile saved successfully');
       
@@ -183,6 +146,46 @@ export default function ProfileSetupScreen() {
             <Text style={styles.saveButtonText}>Complete Setup</Text>
           )}
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.clearSessionButton}
+          onPress={() => {
+            Alert.alert(
+              'Clear Session',
+              'This will completely clear your session and force you to sign in again with fresh Gmail permissions.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Clear Session',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      console.log('Force clearing session from profile setup...');
+                      
+                      // Import AsyncStorage
+                      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+                      
+                      // Clear all AsyncStorage
+                      await AsyncStorage.clear();
+                      console.log('AsyncStorage cleared');
+                      
+                      // Clear Supabase session
+                      await supabase.auth.signOut();
+                      console.log('Supabase session cleared');
+                      
+                      Alert.alert('Success', 'Session cleared! Please restart the app completely and sign in again.');
+                    } catch (error: any) {
+                      console.error('Error clearing session:', error);
+                      Alert.alert('Error', 'Failed to clear session: ' + (error?.message || 'Unknown error'));
+                    }
+                  }
+                }
+              ]
+            );
+          }}
+        >
+          <Text style={styles.clearSessionButtonText}>🗑️ Clear Session & Start Fresh</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -260,6 +263,20 @@ const styles = StyleSheet.create({
   saveButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  clearSessionButton: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 32,
+    borderWidth: 2,
+    borderColor: '#DC2626',
+  },
+  clearSessionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
   },
 }); 

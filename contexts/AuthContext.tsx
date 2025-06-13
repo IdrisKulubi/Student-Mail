@@ -3,6 +3,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+import { createOrUpdateUserFromAuth, getUserProfile } from '../actions';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -70,61 +71,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const createOrUpdateUserProfile = async (user: User) => {
     try {
-      console.log('Creating/updating user profile for:', user.email);
-      
-      const { data: existingUser, error: fetchError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        // PGRST116 is "not found" error, which is expected for new users
-        console.error('Error fetching user profile:', fetchError);
-        return;
-      }
-
-      const userData = {
-        email: user.email!,
-        full_name: user.user_metadata?.full_name || user.user_metadata?.name || null,
-        avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
-        school_domain: user.email?.split('@')[1] || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (!existingUser) {
-        // Create new user profile
-        console.log('Creating new user profile');
-        const { error } = await supabase.from('users').insert({
-          id: user.id,
-          ...userData,
-          total_xp: 0,
-          current_streak: 0,
-          longest_streak: 0,
-          created_at: new Date().toISOString(),
-        });
-
-        if (error) {
-          console.error('Error creating user profile:', error);
-          throw error;
-        } else {
-          console.log('User profile created successfully');
-        }
-      } else {
-        // Update existing user profile with latest auth info
-        console.log('Updating existing user profile');
-        const { error } = await supabase
-          .from('users')
-          .update(userData)
-          .eq('id', user.id);
-
-        if (error) {
-          console.error('Error updating user profile:', error);
-          throw error;
-        } else {
-          console.log('User profile updated successfully');
-        }
-      }
+      await createOrUpdateUserFromAuth(user);
     } catch (error) {
       console.error('Error in createOrUpdateUserProfile:', error);
       // Don't throw here to prevent auth flow from breaking
@@ -140,6 +87,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         provider: 'google',
         options: {
           redirectTo,
+          scopes: 'openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify',
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -226,19 +174,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     
     try {
       console.log('Refreshing user profile data...');
-      const { data: profile, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', session.user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error refreshing user profile:', error);
-      } else {
-        console.log('User profile refreshed:', profile);
-        // Force a re-render by updating the session state
-        setSession({ ...session });
-      }
+      const profile = await getUserProfile(session.user.id);
+      console.log('User profile refreshed:', profile);
+      // Force a re-render by updating the session state
+      setSession({ ...session });
     } catch (error) {
       console.error('Error in refreshUserProfile:', error);
     }

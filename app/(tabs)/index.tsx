@@ -10,18 +10,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { getUserProfile, getUserStats, isProfileComplete, UserProfile, UserStats } from '../../actions';
 import AuthDebug from '../../components/AuthDebug';
-
-interface UserStats {
-  totalXp: number;
-  currentStreak: number;
-  longestStreak: number;
-  unreadEmails: number;
-  jobApplications: number;
-  moodEntries: number;
-}
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -35,72 +26,29 @@ export default function DashboardScreen() {
     moodEntries: 0,
   });
   const [refreshing, setRefreshing] = useState(false);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
 
   const fetchUserProfile = async () => {
-    if (!user) return;
+    if (!user?.id) return;
 
     try {
-      const { data: profile, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user profile:', error);
-      } else {
-        setUserProfile(profile);
-      }
+      const profile = await getUserProfile(user.id);
+      setUserProfile(profile);
     } catch (error) {
       console.error('Error checking user profile:', error);
+      setUserProfile(null);
     } finally {
       setProfileLoading(false);
     }
   };
 
   const fetchUserStats = async () => {
-    if (!user) return;
+    if (!user?.id) return;
 
     try {
-      // Fetch user profile data
-      const { data: userData } = await supabase
-        .from('users')
-        .select('total_xp, current_streak, longest_streak')
-        .eq('id', user.id)
-        .single();
-
-      // Fetch unread emails count
-      const { count: unreadCount } = await supabase
-        .from('emails')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-
-      // Fetch job applications count
-      const { count: jobsCount } = await supabase
-        .from('job_applications')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
-
-      // Fetch mood entries count (this month)
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      const { count: moodCount } = await supabase
-        .from('mood_entries')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .gte('entry_date', startOfMonth.toISOString().split('T')[0]);
-
-      setStats({
-        totalXp: userData?.total_xp || 0,
-        currentStreak: userData?.current_streak || 0,
-        longestStreak: userData?.longest_streak || 0,
-        unreadEmails: unreadCount || 0,
-        jobApplications: jobsCount || 0,
-        moodEntries: moodCount || 0,
-      });
+      const userStats = await getUserStats(user.id);
+      setStats(userStats);
     } catch (error) {
       console.error('Error fetching user stats:', error);
     }
@@ -117,7 +65,7 @@ export default function DashboardScreen() {
     setRefreshing(false);
   };
 
-  const needsProfileSetup = !profileLoading && (!userProfile || !userProfile.university || !userProfile.major);
+  const needsProfileSetup = !profileLoading && !isProfileComplete(userProfile);
 
   const StatCard = ({ icon, title, value, color }: {
     icon: string;
@@ -241,19 +189,19 @@ export default function DashboardScreen() {
             <QuickAction
               icon="mail"
               title="Check Emails"
-              onPress={() => {/* Navigate to emails */}}
+              onPress={() => router.push('/(tabs)/emails')}
               color="#4F46E5"
             />
             <QuickAction
               icon="search"
               title="Find Jobs"
-              onPress={() => {/* Navigate to jobs */}}
+              onPress={() => router.push('/(tabs)/jobs')}
               color="#059669"
             />
             <QuickAction
               icon="heart"
               title="Log Mood"
-              onPress={() => {/* Navigate to mood tracker */}}
+              onPress={() => router.push('/(tabs)/wellness')}
               color="#DC2626"
             />
             <QuickAction

@@ -17,7 +17,7 @@ export default function Index() {
       // User is not authenticated, go to login
       router.replace('/login');
     }
-  }, [session, loading]);
+  }, [session, loading, router]);
 
   // Show loading screen while determining auth state
   return (

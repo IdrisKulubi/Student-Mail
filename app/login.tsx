@@ -61,7 +61,7 @@ export default function LoginScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Welcome to</Text>
-          <Text style={styles.appName}>StudentHub</Text>
+          <Text style={styles.appName}>IdrisVibe</Text>
           <Text style={styles.subtitle}>
             Your all-in-one platform for emails, jobs, wellness, and more
           </Text>

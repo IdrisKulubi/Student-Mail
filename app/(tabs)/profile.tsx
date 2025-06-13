@@ -241,7 +241,7 @@ export default function ProfileScreen() {
 
         {/* App Version */}
         <View style={styles.versionContainer}>
-          <Text style={styles.versionText}>StudentHub v1.0.0</Text>
+          <Text style={styles.versionText}>IdrisVibe v1.0.0</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
