@@ -1,56 +1,399 @@
-import { Image } from 'expo-image';
-import {  StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+  RefreshControl,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+interface UserStats {
+  totalXp: number;
+  currentStreak: number;
+  longestStreak: number;
+  unreadEmails: number;
+  jobApplications: number;
+  moodEntries: number;
+}
 
-export default function HomeScreen() {
+export default function DashboardScreen() {
+  const { user } = useAuth();
+  const [stats, setStats] = useState<UserStats>({
+    totalXp: 0,
+    currentStreak: 0,
+    longestStreak: 0,
+    unreadEmails: 0,
+    jobApplications: 0,
+    moodEntries: 0,
+  });
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchUserStats = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch user profile data
+      const { data: userData } = await supabase
+        .from('users')
+        .select('total_xp, current_streak, longest_streak')
+        .eq('id', user.id)
+        .single();
+
+      // Fetch unread emails count
+      const { count: unreadCount } = await supabase
+        .from('emails')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('is_read', false);
+
+      // Fetch job applications count
+      const { count: jobsCount } = await supabase
+        .from('job_applications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id);
+
+      // Fetch mood entries count (this month)
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      const { count: moodCount } = await supabase
+        .from('mood_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('entry_date', startOfMonth.toISOString().split('T')[0]);
+
+      setStats({
+        totalXp: userData?.total_xp || 0,
+        currentStreak: userData?.current_streak || 0,
+        longestStreak: userData?.longest_streak || 0,
+        unreadEmails: unreadCount || 0,
+        jobApplications: jobsCount || 0,
+        moodEntries: moodCount || 0,
+      });
+    } catch (error) {
+      console.error('Error fetching user stats:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchUserStats();
+  }, [user]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchUserStats();
+    setRefreshing(false);
+  };
+
+  const StatCard = ({ icon, title, value, color }: {
+    icon: string;
+    title: string;
+    value: number | string;
+    color: string;
+  }) => (
+    <View style={styles.statCard}>
+      <View style={[styles.statIcon, { backgroundColor: color }]}>
+        <Ionicons name={icon as any} size={24} color="#FFFFFF" />
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statTitle}>{title}</Text>
+    </View>
+  );
+
+  const QuickAction = ({ icon, title, onPress, color }: {
+    icon: string;
+    title: string;
+    onPress: () => void;
+    color: string;
+  }) => (
+    <TouchableOpacity style={styles.quickAction} onPress={onPress}>
+      <View style={[styles.quickActionIcon, { backgroundColor: color }]}>
+        <Ionicons name={icon as any} size={20} color="#FFFFFF" />
+      </View>
+      <Text style={styles.quickActionTitle}>{title}</Text>
+    </TouchableOpacity>
+  );
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Done</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Idris</ThemedText>
-        <ThemedText>
-           <ThemedText type="defaultSemiBold">It has finally worked </ThemedText>
-         
-        </ThemedText>
-      </ThemedView>
-      
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Just going to see if this works</ThemedText>
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        style={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>Good morning!</Text>
+            <Text style={styles.userName}>{user?.user_metadata?.full_name || 'Student'}</Text>
+          </View>
+          <TouchableOpacity style={styles.notificationButton}>
+            <Ionicons name="notifications-outline" size={24} color="#374151" />
+            {stats.unreadEmails > 0 && <View style={styles.notificationBadge} />}
+          </TouchableOpacity>
+        </View>
 
-      </ThemedView>
-    </ParallaxScrollView>
+        {/* Stats Grid */}
+        <View style={styles.statsContainer}>
+          <View style={styles.statsRow}>
+            <StatCard
+              icon="flame"
+              title="Current Streak"
+              value={`${stats.currentStreak} days`}
+              color="#F59E0B"
+            />
+            <StatCard
+              icon="trophy"
+              title="Total XP"
+              value={stats.totalXp}
+              color="#8B5CF6"
+            />
+          </View>
+          <View style={styles.statsRow}>
+            <StatCard
+              icon="mail"
+              title="Unread Emails"
+              value={stats.unreadEmails}
+              color="#EF4444"
+            />
+            <StatCard
+              icon="briefcase"
+              title="Applications"
+              value={stats.jobApplications}
+              color="#10B981"
+            />
+          </View>
+        </View>
+
+        {/* Quick Actions */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Quick Actions</Text>
+          <View style={styles.quickActionsGrid}>
+            <QuickAction
+              icon="mail"
+              title="Check Emails"
+              onPress={() => {/* Navigate to emails */}}
+              color="#4F46E5"
+            />
+            <QuickAction
+              icon="search"
+              title="Find Jobs"
+              onPress={() => {/* Navigate to jobs */}}
+              color="#059669"
+            />
+            <QuickAction
+              icon="heart"
+              title="Log Mood"
+              onPress={() => {/* Navigate to mood tracker */}}
+              color="#DC2626"
+            />
+            <QuickAction
+              icon="document-text"
+              title="Build Resume"
+              onPress={() => {/* Navigate to resume builder */}}
+              color="#7C3AED"
+            />
+          </View>
+        </View>
+
+        {/* Recent Activity */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recent Activity</Text>
+          <View style={styles.activityCard}>
+            <Ionicons name="time-outline" size={20} color="#6B7280" />
+            <Text style={styles.activityText}>
+              No recent activity. Start by checking your emails!
+            </Text>
+          </View>
+        </View>
+
+        {/* Motivational Quote */}
+        <View style={styles.quoteCard}>
+          <Ionicons name="bulb-outline" size={24} color="#F59E0B" />
+          <Text style={styles.quoteText}>
+            &quot;Success is not final, failure is not fatal: it is the courage to continue that counts.&quot;
+          </Text>
+          <Text style={styles.quoteAuthor}>- Winston Churchill</Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
   },
-  stepContainer: {
-    gap: 8,
+  content: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 24,
+  },
+  greeting: {
+    fontSize: 16,
+    color: '#6B7280',
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginTop: 4,
+  },
+  notificationButton: {
+    position: 'relative',
+    padding: 8,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#EF4444',
+  },
+  statsContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    marginHorizontal: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  statIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  statTitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 32,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 16,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  quickAction: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  quickActionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  quickActionTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    textAlign: 'center',
+  },
+  activityCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  activityText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 12,
+    flex: 1,
+  },
+  quoteCard: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 12,
+    padding: 20,
+    marginHorizontal: 20,
+    marginBottom: 32,
+    borderLeftWidth: 4,
+    borderLeftColor: '#F59E0B',
+  },
+  quoteText: {
+    fontSize: 16,
+    color: '#92400E',
+    fontStyle: 'italic',
+    lineHeight: 24,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  quoteAuthor: {
+    fontSize: 14,
+    color: '#B45309',
+    fontWeight: '500',
   },
 });
