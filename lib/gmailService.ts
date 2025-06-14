@@ -340,19 +340,25 @@ export class GmailService {
 }
 
 /**
- * Create Gmail service instance from user session
+ * Create Gmail service instance from provider token
  */
-export async function createGmailService(userId: string): Promise<GmailService | null> {
+export async function createGmailService(userId: string, providerToken?: string): Promise<GmailService | null> {
   try {
-    // Get user's OAuth tokens from Supabase
-    const { data: session } = await supabase.auth.getSession();
+    let accessToken = providerToken;
     
-    if (!session.session?.provider_token) {
+    // If no provider token passed, try to get it from Supabase session
+    if (!accessToken) {
+      const { data: session } = await supabase.auth.getSession();
+      accessToken = session.session?.provider_token;
+    }
+    
+    if (!accessToken) {
       console.error('No Gmail OAuth token found for user');
       return null;
     }
 
-    return new GmailService(session.session.provider_token);
+    console.log('Creating Gmail service with provider token');
+    return new GmailService(accessToken);
   } catch (error) {
     console.error('Error creating Gmail service:', error);
     return null;

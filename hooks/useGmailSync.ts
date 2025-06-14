@@ -8,7 +8,7 @@ export interface SyncResult {
 }
 
 export function useGmailSync() {
-  const { user } = useAuth();
+  const { user, providerToken } = useAuth();
   const [syncing, setSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
@@ -25,7 +25,10 @@ export function useGmailSync() {
     try {
       console.log('Starting Gmail sync for user:', user.id);
       
-      const gmailService = await createGmailService(user.id);
+      // Use provider token from AuthContext
+      console.log('Provider token available:', !!providerToken);
+      
+      const gmailService = await createGmailService(user.id, providerToken || undefined);
       if (!gmailService) {
         throw new Error('Failed to create Gmail service. Please check your Google account permissions.');
       }
@@ -43,7 +46,7 @@ export function useGmailSync() {
     } finally {
       setSyncing(false);
     }
-  }, [user?.id, syncing]);
+  }, [user?.id, providerToken, syncing]);
 
   const markEmailAsReadInGmail = useCallback(async (gmailId: string): Promise<void> => {
     if (!user?.id) {
@@ -51,7 +54,8 @@ export function useGmailSync() {
     }
 
     try {
-      const gmailService = await createGmailService(user.id);
+      // Use provider token from AuthContext
+      const gmailService = await createGmailService(user.id, providerToken || undefined);
       if (gmailService) {
         await gmailService.markAsRead(gmailId);
       }
@@ -59,7 +63,7 @@ export function useGmailSync() {
       console.error('Error marking email as read in Gmail:', error);
       // Don't throw here as this is a background operation
     }
-  }, [user?.id]);
+  }, [user?.id, providerToken]);
 
   return {
     syncing,

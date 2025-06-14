@@ -36,7 +36,7 @@ const CATEGORY_COLORS = {
 };
 
 export default function EmailsScreen() {
-  const { user } = useAuth();
+  const { user, session, providerToken } = useAuth();
   const router = useRouter();
   const { syncing, syncEmails, markEmailAsReadInGmail, lastSyncResult, lastSyncTime } = useGmailSync();
   
@@ -387,46 +387,42 @@ export default function EmailsScreen() {
           </Text>
         </TouchableOpacity>
 
+       
         <TouchableOpacity
-          style={[styles.syncButton, { backgroundColor: '#EF4444', marginLeft: 8 }]}
+          style={[styles.syncButton, { backgroundColor: '#10B981', marginLeft: 8 }]}
           onPress={async () => {
-            Alert.alert(
-              'Clear Session',
-              'This will completely clear your session and force you to sign in again.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Clear',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      console.log('Force clearing session...');
-                      
-                      // Import AsyncStorage
-                      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-                      
-                      // Clear all AsyncStorage
-                      await AsyncStorage.clear();
-                      console.log('AsyncStorage cleared');
-                      
-                      // Clear Supabase session
-                      await supabase.auth.signOut();
-                      console.log('Supabase session cleared');
-                      
-                      Alert.alert('Success', 'Session cleared! Please restart the app completely.');
-                    } catch (error: any) {
-                      console.error('Error clearing session:', error);
-                      Alert.alert('Error', 'Failed to clear session: ' + (error?.message || 'Unknown error'));
-                    }
-                  }
-                }
-              ]
-            );
+            try {
+              // Check session and provider token
+              const { data: supabaseSession } = await supabase.auth.getSession();
+              
+              const debugInfo = {
+                supabaseHasSession: !!supabaseSession.session,
+                supabaseHasProviderToken: !!supabaseSession.session?.provider_token,
+                authContextHasProviderToken: !!providerToken,
+                providerTokenLength: providerToken?.length || 0,
+                userEmail: user?.email,
+                userId: user?.id,
+              };
+              
+              console.log('Gmail Debug Info:', debugInfo);
+              
+              Alert.alert(
+                'Gmail Debug Info',
+                `Supabase Session: ${debugInfo.supabaseHasSession ? 'Yes' : 'No'}\n` +
+                `Supabase Provider Token: ${debugInfo.supabaseHasProviderToken ? 'Yes' : 'No'}\n` +
+                `AuthContext Provider Token: ${debugInfo.authContextHasProviderToken ? 'Yes' : 'No'}\n` +
+                `Token Length: ${debugInfo.providerTokenLength}\n` +
+                `User: ${debugInfo.userEmail || 'None'}`
+              );
+            } catch (error: any) {
+              console.error('Debug error:', error);
+              Alert.alert('Debug Error', error.message);
+            }
           }}
         >
-          <Ionicons name="trash" size={16} color="white" />
+          <Ionicons name="bug" size={16} color="white" />
           <Text style={[styles.syncButtonText, { color: 'white' }]}>
-            Clear Session
+            Debug Gmail
           </Text>
         </TouchableOpacity>
       </View>

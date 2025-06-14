@@ -3,14 +3,18 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createOrUpdateUserFromAuth, getUserProfile, testDatabaseConnection } from '../actions';
 
 WebBrowser.maybeCompleteAuthSession();
+
+const PROVIDER_TOKEN_KEY = 'gmail_provider_token';
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  providerToken: string | null;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   refreshUserProfile: () => Promise<void>;
@@ -34,6 +38,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [providerToken, setProviderToken] = useState<string | null>(null);
 
   // Use custom scheme for better redirect handling
   const redirectTo = AuthSession.makeRedirectUri({
@@ -43,17 +48,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
   console.log('Configured redirect URL:', redirectTo);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initializeAuth = async () => {
+      // Get initial session
+      const { data: { session } } = await supabase.auth.getSession();
       console.log('Initial session check:', session ? 'Found session' : 'No session');
+      
+      // Load provider token from AsyncStorage
+      const storedProviderToken = await AsyncStorage.getItem(PROVIDER_TOKEN_KEY);
+      console.log('Stored provider token found:', !!storedProviderToken);
+      
       if (session) {
         console.log('Initial session user:', session.user.email);
         console.log('Initial session has provider_token:', !!session.provider_token);
       }
+      
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
-    });
+      
+      // Use stored provider token if available, otherwise use session provider token
+      const finalProviderToken = storedProviderToken || session?.provider_token || null;
+      setProviderToken(finalProviderToken);
+      console.log('Final provider token set:', !!finalProviderToken);
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const {
@@ -69,6 +88,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      // Update provider token if available in session
+      if (session?.provider_token) {
+        setProviderToken(session.provider_token);
+        await AsyncStorage.setItem(PROVIDER_TOKEN_KEY, session.provider_token);
+        console.log('Provider token saved to AsyncStorage');
+      } else if (event === 'SIGNED_OUT') {
+        // Clear provider token on sign out
+        setProviderToken(null);
+        await AsyncStorage.removeItem(PROVIDER_TOKEN_KEY);
+        console.log('Provider token cleared from AsyncStorage');
+      }
 
       // Create or update user profile when user signs in
       if (event === 'SIGNED_IN' && session?.user) {
@@ -170,6 +201,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 provider_refresh_token,
               };
               setSession(updatedSession as any);
+              setProviderToken(provider_token);
+              
+              // Save provider token to AsyncStorage for persistence
+              await AsyncStorage.setItem(PROVIDER_TOKEN_KEY, provider_token);
+              console.log('Provider token saved to AsyncStorage during OAuth');
             }
             
             console.log('Session set successfully:', sessionData.session ? 'Session exists' : 'No session');
@@ -203,6 +239,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         console.error('Error signing out:', error);
         throw error;
       }
+      
+      // Clear provider token
+      setProviderToken(null);
+      await AsyncStorage.removeItem(PROVIDER_TOKEN_KEY);
+      console.log('Provider token cleared during sign out');
     } catch (error) {
       console.error('Sign out error:', error);
       throw error;
@@ -227,6 +268,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     session,
     user,
     loading,
+    providerToken,
     signInWithGoogle,
     signOut,
     refreshUserProfile,
