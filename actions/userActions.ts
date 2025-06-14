@@ -48,14 +48,31 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
       .eq('id', userId)
       .single();
 
-    if (error && error.code !== 'PGRST116') {
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows returned - user doesn't exist yet
+        console.log('User profile not found (PGRST116)');
+        return null;
+      }
+      
       console.error('Error fetching user profile:', error);
+      console.error('Error details:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw error;
     }
 
+    console.log('User profile fetched successfully:', data ? 'Found' : 'Not found');
     return data;
   } catch (error) {
     console.error('Error in getUserProfile:', error);
+    console.error('Function context:', {
+      userId,
+      timestamp: new Date().toISOString()
+    });
     throw error;
   }
 };
@@ -66,8 +83,32 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
 export const createOrUpdateUserFromAuth = async (user: User): Promise<UserProfile> => {
   try {
     console.log('Creating/updating user profile for:', user.email);
+    console.log('User ID:', user.id);
     
-    const existingUser = await getUserProfile(user.id);
+    // Check if user already exists
+    console.log('Checking if user profile already exists...');
+    let existingUser: UserProfile | null = null;
+    
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error checking existing user:', error);
+        throw error;
+      }
+      
+      existingUser = data;
+      console.log('Existing user found:', existingUser ? 'Yes' : 'No');
+    } catch (error: any) {
+      if (error.code !== 'PGRST116') {
+        throw error;
+      }
+      console.log('User does not exist yet');
+    }
     
     const userData = {
       email: user.email!,
@@ -77,24 +118,34 @@ export const createOrUpdateUserFromAuth = async (user: User): Promise<UserProfil
       updated_at: new Date().toISOString(),
     };
 
+    console.log('User data to save:', userData);
+
     if (!existingUser) {
       // Create new user profile
-      console.log('Creating new user profile');
+      console.log('Creating new user profile...');
+      const insertData = {
+        id: user.id,
+        ...userData,
+        total_xp: 0,
+        current_streak: 0,
+        longest_streak: 0,
+        created_at: new Date().toISOString(),
+      };
+      
       const { data, error } = await supabase
         .from('users')
-        .insert({
-          id: user.id,
-          ...userData,
-          total_xp: 0,
-          current_streak: 0,
-          longest_streak: 0,
-          created_at: new Date().toISOString(),
-        })
+        .insert(insertData)
         .select()
         .single();
 
       if (error) {
         console.error('Error creating user profile:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
         throw error;
       }
 
@@ -102,7 +153,7 @@ export const createOrUpdateUserFromAuth = async (user: User): Promise<UserProfil
       return data;
     } else {
       // Update existing user profile
-      console.log('Updating existing user profile');
+      console.log('Updating existing user profile...');
       const { data, error } = await supabase
         .from('users')
         .update(userData)
@@ -112,6 +163,12 @@ export const createOrUpdateUserFromAuth = async (user: User): Promise<UserProfil
 
       if (error) {
         console.error('Error updating user profile:', error);
+        console.error('Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
         throw error;
       }
 
@@ -120,6 +177,11 @@ export const createOrUpdateUserFromAuth = async (user: User): Promise<UserProfil
     }
   } catch (error) {
     console.error('Error in createOrUpdateUserFromAuth:', error);
+    console.error('Function context:', {
+      userId: user.id,
+      userEmail: user.email,
+      timestamp: new Date().toISOString()
+    });
     throw error;
   }
 };
@@ -264,5 +326,37 @@ export const updateUserXP = async (
   } catch (error) {
     console.error('Error in updateUserXP:', error);
     throw error;
+  }
+};
+
+/**
+ * Test database connection
+ */
+export const testDatabaseConnection = async (): Promise<boolean> => {
+  try {
+    console.log('Testing database connection...');
+    
+    // Simple query with timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Database connection timeout')), 5000);
+    });
+    
+    const queryPromise = supabase
+      .from('users')
+      .select('id')
+      .limit(1);
+    
+    const { error } = await Promise.race([queryPromise, timeoutPromise]);
+    
+    if (error) {
+      console.error('Database connection test failed:', error);
+      return false;
+    }
+    
+    console.log('Database connection test successful');
+    return true;
+  } catch (error) {
+    console.error('Database connection test error:', error);
+    return false;
   }
 }; 

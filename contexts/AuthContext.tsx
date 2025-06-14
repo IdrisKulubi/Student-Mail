@@ -3,7 +3,7 @@ import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { createOrUpdateUserFromAuth, getUserProfile } from '../actions';
+import { createOrUpdateUserFromAuth, getUserProfile, testDatabaseConnection } from '../actions';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -60,9 +60,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(session?.user ?? null);
       setLoading(false);
 
-      // If user just signed in, create/update their profile
+      // Don't create profile automatically - let the navigation logic handle it
+      // This prevents the app from getting stuck during auth
       if (event === 'SIGNED_IN' && session?.user) {
-        await createOrUpdateUserProfile(session.user);
+        console.log('User signed in, profile creation will be handled by navigation logic');
       }
     });
 
@@ -71,17 +72,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const createOrUpdateUserProfile = async (user: User) => {
     try {
-      await createOrUpdateUserFromAuth(user);
+      console.log('Creating/updating user profile for:', user.email);
+      
+      // Add a timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Profile creation timeout')), 8000); // 8 second timeout
+      });
+      
+      const profilePromise = createOrUpdateUserFromAuth(user);
+      
+      await Promise.race([profilePromise, timeoutPromise]);
+      console.log('User profile created/updated successfully');
     } catch (error) {
       console.error('Error in createOrUpdateUserProfile:', error);
       // Don't throw here to prevent auth flow from breaking
+      // The app will handle profile completion check in the navigation logic
     }
   };
 
   const signInWithGoogle = async () => {
     try {
       console.log('Starting Google sign in...');
-      console.log('Redirect URL:', redirectTo);
       
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -95,64 +106,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
         },
       });
 
-      console.log('OAuth response:', { data, error });
-
       if (error) {
-        console.error('Error signing in with Google:', error);
+        console.error('Error starting Google sign in:', error);
         throw error;
       }
 
-      if (data?.url) {
-        console.log('OAuth URL generated:', data.url);
-        console.log('Opening browser for authentication...');
+      if (data.url) {
+        console.log('Opening OAuth URL:', data.url);
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
         
-        // Open the OAuth URL in the browser
-        const result = await WebBrowser.openAuthSessionAsync(
-          data.url,
-          redirectTo
-        );
-        
-        console.log('Browser result:', result);
-        
-        if (result.type === 'success') {
-          console.log('OAuth completed successfully');
-          console.log('OAuth result URL:', result.url);
-          
-          // Parse the URL to extract tokens
-          if (result.url) {
-            const url = new URL(result.url);
-            const fragment = url.hash.substring(1);
-            const params = new URLSearchParams(fragment);
-            
-            const accessToken = params.get('access_token');
-            const refreshToken = params.get('refresh_token');
-            
-            if (accessToken && refreshToken) {
-              console.log('Setting session with tokens...');
-              const { data, error } = await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken,
-              });
-              
-              if (error) {
-                console.error('Error setting session:', error);
-                throw error;
-              }
-              
-              console.log('Session set successfully:', data);
-            }
-          }
-        } else if (result.type === 'cancel') {
-          throw new Error('Authentication was cancelled');
-        } else {
-          throw new Error('Authentication failed');
+        console.log('Browser auth session result:', result);
+        if (result.type !== 'success') {
+          // This could be 'cancel', 'dismiss', or 'error'.
+          // The user might have cancelled the login.
+          console.warn('Google sign in was not completed:', result.type);
         }
-      } else {
-        throw new Error('No OAuth URL generated');
+        // No need to manually handle the session here.
+        // The onAuthStateChange listener will detect the SIGNED_IN event
+        // once the redirect is completed and Supabase processes the session.
       }
     } catch (error) {
-      console.error('Google sign in error:', error);
-      throw error;
+      console.error('Error in signInWithGoogle:', error);
+      // It's useful to show an alert to the user here.
+      // Alert.alert('Sign In Error', 'An unexpected error occurred during sign-in.');
     }
   };
 
