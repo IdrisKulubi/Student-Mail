@@ -15,13 +15,15 @@ export function useGmailSync() {
 
   const syncEmails = useCallback(async (): Promise<SyncResult | null> => {
     if (!user?.id || syncing) {
+      if(syncing) console.log('Sync already in progress.');
+      if(!user?.id) console.log('No user ID found, aborting sync.');
       return null;
     }
 
     setSyncing(true);
     
     try {
-      console.log('Starting Gmail sync...');
+      console.log('Starting Gmail sync for user:', user.id);
       
       const gmailService = await createGmailService(user.id);
       if (!gmailService) {

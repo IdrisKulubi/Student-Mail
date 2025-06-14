@@ -45,7 +45,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('Initial session:', session ? 'Found' : 'None');
+      console.log('Initial session check:', session ? 'Found session' : 'No session');
+      if (session) {
+        console.log('Initial session user:', session.user.email);
+        console.log('Initial session has provider_token:', !!session.provider_token);
+      }
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -55,15 +59,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state change:', event, session ? 'Session exists' : 'No session');
+      console.log('Auth state change event:', event);
+      console.log('Auth state change session:', session ? 'Session exists' : 'No session');
+      if (session) {
+        console.log('Session user:', session.user.email);
+        console.log('Session has provider_token:', !!session.provider_token);
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
 
-      // Don't create profile automatically - let the navigation logic handle it
-      // This prevents the app from getting stuck during auth
+      // Create or update user profile when user signs in
       if (event === 'SIGNED_IN' && session?.user) {
-        console.log('User signed in, profile creation will be handled by navigation logic');
+        console.log('User signed in successfully, creating/updating profile');
+        // Don't await this - let it run in background to avoid blocking navigation
+        createOrUpdateUserProfile(session.user).catch(error => {
+          console.error('Background profile creation failed:', error);
+        });
       }
     });
 
@@ -74,9 +87,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       console.log('Creating/updating user profile for:', user.email);
       
-      // Add a timeout to prevent hanging
+      // Add a longer timeout to prevent hanging
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Profile creation timeout')), 8000); // 8 second timeout
+        setTimeout(() => reject(new Error('Profile creation timeout')), 15000); // Increased to 15 seconds
       });
       
       const profilePromise = createOrUpdateUserFromAuth(user);
@@ -87,6 +100,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Error in createOrUpdateUserProfile:', error);
       // Don't throw here to prevent auth flow from breaking
       // The app will handle profile completion check in the navigation logic
+      console.log('Profile creation failed, but continuing with auth flow');
     }
   };
 
@@ -116,19 +130,69 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
         
         console.log('Browser auth session result:', result);
-        if (result.type !== 'success') {
-          // This could be 'cancel', 'dismiss', or 'error'.
-          // The user might have cancelled the login.
-          console.warn('Google sign in was not completed:', result.type);
+        
+        if (result.type === 'success' && result.url) {
+          console.log('OAuth redirect successful, processing callback URL');
+          
+          // Extract the session from the callback URL
+          const url = new URL(result.url);
+          const fragment = url.hash.substring(1); // Remove the '#'
+          const params = new URLSearchParams(fragment);
+          
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          const provider_token = params.get('provider_token');
+          const provider_refresh_token = params.get('provider_refresh_token');
+          
+          if (access_token && refresh_token) {
+            console.log('Tokens found in callback, setting session manually');
+            console.log('Provider token found:', !!provider_token);
+            
+            // Set the session manually using the tokens from the callback
+            const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+            
+            if (sessionError) {
+              console.error('Error setting session:', sessionError);
+              throw sessionError;
+            }
+            
+            // If we have a provider token, we need to update the session to include it
+            // This is a workaround since setSession doesn't accept provider tokens directly
+            if (provider_token && sessionData.session) {
+              console.log('Updating session with provider token');
+              // Store provider tokens in session user_metadata as a workaround
+              const updatedSession = {
+                ...sessionData.session,
+                provider_token,
+                provider_refresh_token,
+              };
+              setSession(updatedSession as any);
+            }
+            
+            console.log('Session set successfully:', sessionData.session ? 'Session exists' : 'No session');
+            if (sessionData.session) {
+              console.log('Session user:', sessionData.session.user.email);
+              console.log('Session has provider_token:', !!provider_token);
+            }
+          } else {
+            console.error('No tokens found in OAuth callback URL');
+            throw new Error('OAuth callback did not contain required tokens');
+          }
+        } else if (result.type === 'cancel') {
+          console.log('User cancelled OAuth flow');
+          // Don't throw an error for cancellation
+          return;
+        } else {
+          console.error('OAuth flow failed:', result);
+          throw new Error('OAuth authentication failed');
         }
-        // No need to manually handle the session here.
-        // The onAuthStateChange listener will detect the SIGNED_IN event
-        // once the redirect is completed and Supabase processes the session.
       }
     } catch (error) {
       console.error('Error in signInWithGoogle:', error);
-      // It's useful to show an alert to the user here.
-      // Alert.alert('Sign In Error', 'An unexpected error occurred during sign-in.');
+      throw error;
     }
   };
 

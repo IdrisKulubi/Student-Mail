@@ -133,14 +133,7 @@ export default function LoginScreen() {
             style={styles.debugButton}
             onPress={async () => {
               try {
-                const { data, error } = await supabase.auth.signInWithOAuth({
-                  provider: 'google',
-                  options: {
-                    redirectTo: 'https://your-project.supabase.co/auth/v1/callback',
-                  },
-                });
-                console.log('Debug OAuth test:', { data, error });
-                Alert.alert('Debug', `OAuth URL: ${data?.url || 'No URL generated'}\nError: ${error?.message || 'None'}`);
+                await signInWithGoogle();
               } catch (err: any) {
                 console.error('Debug OAuth error:', err);
                 Alert.alert('Debug Error', err.message);
