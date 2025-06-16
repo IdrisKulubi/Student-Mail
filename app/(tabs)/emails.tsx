@@ -24,6 +24,8 @@ import {
   EmailFilters 
 } from '../../actions';
 import { useGmailSync } from '../../hooks/useGmailSync';
+import { useStreak } from '../../hooks/useStreak';
+import { StreakDisplay } from '../../components/StreakDisplay';
 import { supabase } from '../../lib/supabase';
 
 const CATEGORIES = ['All', 'Events', 'Jobs', 'Finance', 'Class', 'Other'];
@@ -39,6 +41,7 @@ export default function EmailsScreen() {
   const { user, session, providerToken } = useAuth();
   const router = useRouter();
   const { syncing, syncEmails, markEmailAsReadInGmail, lastSyncResult, lastSyncTime } = useGmailSync();
+  const { updateStreak, refreshStreakData } = useStreak();
   
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,6 +141,14 @@ export default function EmailsScreen() {
         ));
         // Update stats
         setEmailStats(prev => ({ ...prev, unread: Math.max(0, prev.unread - 1) }));
+        
+        // Update streak and XP for reading email
+        try {
+          await updateStreak();
+        } catch (streakError) {
+          console.error('Error updating streak:', streakError);
+          // Don't block navigation if streak update fails
+        }
       }
       
       // Navigate to email detail screen
@@ -196,6 +207,16 @@ export default function EmailsScreen() {
       // Update stats
       const unreadCount = emails.filter(e => selectedEmails.has(e.id) && !e.is_read).length;
       setEmailStats(prev => ({ ...prev, unread: Math.max(0, prev.unread - unreadCount) }));
+      
+      // Update streak and XP for bulk reading (only if there were unread emails)
+      if (unreadCount > 0) {
+        try {
+          await updateStreak();
+        } catch (streakError) {
+          console.error('Error updating streak:', streakError);
+          // Don't block the success message if streak update fails
+        }
+      }
       
       // Clear selection
       setSelectedEmails(new Set());
@@ -284,6 +305,9 @@ export default function EmailsScreen() {
 
   const renderHeader = () => (
     <View style={styles.header}>
+      {/* Streak Display */}
+      <StreakDisplay compact={true} showResetButton={__DEV__} />
+      
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
         <TextInput

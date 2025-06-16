@@ -4,6 +4,9 @@ export * from './userActions';
 // Email Actions  
 export * from './emailActions';
 
+// Streak Actions
+export * from './streakActions';
+
 // Re-export all user actions
 export {
   getUserProfile,
@@ -14,6 +17,17 @@ export {
   updateUserXP,
   testDatabaseConnection,
 } from './userActions';
+
+// Re-export streak actions
+export {
+  updateEmailReadingStreak,
+  getStreakData,
+  resetStreak,
+  checkStreakMaintenance,
+  getUserStreakActivities,
+  getUserXPSummary,
+  XP_REWARDS,
+} from './streakActions';
 
 // Re-export types for convenience
 export type {
@@ -26,4 +40,10 @@ export type {
   Email,
   CreateEmailData,
   EmailFilters,
-} from './emailActions'; 
+} from './emailActions';
+
+export type {
+  StreakData,
+  StreakUpdateResult,
+  StreakActivity,
+} from './streakActions'; 
