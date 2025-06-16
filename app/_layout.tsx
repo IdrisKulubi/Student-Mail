@@ -7,6 +7,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AuthProvider } from '../contexts/AuthContext';
+import { ThemeProvider as CustomThemeProvider } from '../contexts/ThemeContext';
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
@@ -37,7 +38,9 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <RootLayoutNav />
+      <CustomThemeProvider>
+        <RootLayoutNav />
+      </CustomThemeProvider>
     </AuthProvider>
   );
 }

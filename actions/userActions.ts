@@ -233,12 +233,12 @@ export const completeUserProfile = async (
 /**
  * Get user statistics
  */
-export const getUserStats = async (userId: string): Promise<UserStats> => {
+export const getUserStats = async (userId: string, userProfile?: UserProfile | null): Promise<UserStats> => {
   try {
     console.log('Fetching user stats for:', userId);
     
-    // Get user profile data
-    const userProfile = await getUserProfile(userId);
+    // Get user profile data (only if not provided)
+    const profile = userProfile !== undefined ? userProfile : await getUserProfile(userId);
     
     // Get unread emails count
     const { count: unreadCount } = await supabase
@@ -263,9 +263,9 @@ export const getUserStats = async (userId: string): Promise<UserStats> => {
       .gte('entry_date', startOfMonth.toISOString().split('T')[0]);
 
     return {
-      totalXp: userProfile?.total_xp || 0,
-      currentStreak: userProfile?.current_streak || 0,
-      longestStreak: userProfile?.longest_streak || 0,
+      totalXp: profile?.total_xp || 0,
+      currentStreak: profile?.current_streak || 0,
+      longestStreak: profile?.longest_streak || 0,
       unreadEmails: unreadCount || 0,
       jobApplications: jobsCount || 0,
       moodEntries: moodCount || 0,
