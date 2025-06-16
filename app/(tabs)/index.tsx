@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { getUserProfile, getUserStats, isProfileComplete, UserProfile, UserStats } from '../../actions';
-import AuthDebug from '../../components/AuthDebug';
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -57,7 +56,7 @@ export default function DashboardScreen() {
   useEffect(() => {
     fetchUserProfile();
     fetchUserStats();
-  }, [user]);
+  }, [user,fetchUserProfile]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -233,8 +232,7 @@ export default function DashboardScreen() {
           <Text style={styles.quoteAuthor}>- Winston Churchill</Text>
         </View>
 
-        {/* Debug Info - Remove this after testing */}
-        <AuthDebug />
+      
       </ScrollView>
     </SafeAreaView>
   );
