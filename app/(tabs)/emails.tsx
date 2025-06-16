@@ -26,6 +26,7 @@ import {
 import { useGmailSync } from '../../hooks/useGmailSync';
 import { useStreak } from '../../hooks/useStreak';
 import { StreakDisplay } from '../../components/StreakDisplay';
+import { DebugStreakInfo } from '../../components/DebugStreakInfo';
 import { supabase } from '../../lib/supabase';
 
 const CATEGORIES = ['All', 'Events', 'Jobs', 'Finance', 'Class', 'Other'];
@@ -103,9 +104,11 @@ export default function EmailsScreen() {
   }, [user?.id]);
 
   useEffect(() => {
-    fetchEmails();
-    fetchEmailStats();
-  }, [fetchEmails, fetchEmailStats]);
+    if (user?.id) {
+      fetchEmails();
+      fetchEmailStats();
+    }
+  }, [user?.id, selectedCategory, showUnreadOnly, searchQuery]); // Only depend on the actual values, not the functions
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -305,6 +308,8 @@ export default function EmailsScreen() {
 
   const renderHeader = () => (
     <View style={styles.header}>
+      
+      
       {/* Streak Display */}
       <StreakDisplay compact={true} showResetButton={__DEV__} />
       

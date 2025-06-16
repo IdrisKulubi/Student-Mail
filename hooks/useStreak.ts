@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -25,6 +25,7 @@ export const useStreak = (): UseStreakReturn => {
   const [streakData, setStreakData] = useState<StreakData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasInitialized = useRef(false);
 
   /**
    * Fetch current streak data
@@ -104,7 +105,9 @@ export const useStreak = (): UseStreakReturn => {
       setError(null);
       
       await resetStreak(user.id);
-      await refreshStreakData(); // Refresh data after reset
+      // Manually refresh data instead of calling refreshStreakData to avoid dependency issues
+      const data = await getStreakData(user.id);
+      setStreakData(data);
       
       Alert.alert(
         'Streak Reset',
@@ -123,7 +126,7 @@ export const useStreak = (): UseStreakReturn => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, refreshStreakData]);
+  }, [user?.id]);
 
   /**
    * Check if streak needs maintenance
@@ -139,30 +142,20 @@ export const useStreak = (): UseStreakReturn => {
     }
   }, [user?.id]);
 
-  // Load streak data on mount and when user changes
+  // Load streak data on mount and when user changes - FIXED: removed refreshStreakData from deps
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !hasInitialized.current) {
+      hasInitialized.current = true;
       refreshStreakData();
-    } else {
+    } else if (!user?.id) {
+      hasInitialized.current = false;
       setStreakData(null);
       setError(null);
     }
-  }, [user?.id, refreshStreakData]);
+  }, [user?.id]); // Only depend on user?.id
 
-  // Check for streak maintenance on app focus (optional)
-  useEffect(() => {
-    const checkStreakOnFocus = async () => {
-      if (user?.id && streakData) {
-        const needsMaintenance = await checkMaintenance();
-        if (needsMaintenance) {
-          // Optionally show a warning or automatically break the streak
-          console.log('Streak needs maintenance - may be broken');
-        }
-      }
-    };
-
-    checkStreakOnFocus();
-  }, [user?.id, streakData, checkMaintenance]);
+  // REMOVED: The problematic second useEffect that was causing loops
+  // We'll handle streak maintenance manually when needed instead of automatically
 
   return {
     streakData,

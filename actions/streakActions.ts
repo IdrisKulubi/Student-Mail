@@ -108,6 +108,18 @@ const logStreakActivity = async (
   metadata?: Record<string, any>
 ): Promise<void> => {
   try {
+    // Check if streak_activities table exists by trying to query it first
+    const { error: checkError } = await supabase
+      .from('streak_activities')
+      .select('id')
+      .limit(1);
+
+    // If table doesn't exist, skip logging (table not migrated yet)
+    if (checkError && checkError.code === '42P01') {
+      console.log('streak_activities table not found - skipping activity logging');
+      return;
+    }
+
     const { error } = await supabase
       .from('streak_activities')
       .insert({
@@ -355,6 +367,11 @@ export const getUserStreakActivities = async (
       .limit(limit);
 
     if (error) {
+      // If table doesn't exist, return empty array
+      if (error.code === '42P01') {
+        console.log('streak_activities table not found - returning empty activities');
+        return [];
+      }
       console.error('Error fetching streak activities:', error);
       throw error;
     }
@@ -362,7 +379,8 @@ export const getUserStreakActivities = async (
     return data || [];
   } catch (error) {
     console.error('Error in getUserStreakActivities:', error);
-    throw error;
+    // Return empty array instead of throwing to prevent app crashes
+    return [];
   }
 };
 
@@ -375,6 +393,11 @@ export const getUserXPSummary = async (userId: string) => {
       .rpc('get_user_xp_summary', { p_user_id: userId });
 
     if (error) {
+      // If function doesn't exist, return empty array
+      if (error.code === '42883' || error.code === '42P01') {
+        console.log('get_user_xp_summary function not found - returning empty summary');
+        return [];
+      }
       console.error('Error fetching XP summary:', error);
       throw error;
     }
@@ -382,6 +405,7 @@ export const getUserXPSummary = async (userId: string) => {
     return data || [];
   } catch (error) {
     console.error('Error in getUserXPSummary:', error);
-    throw error;
+    // Return empty array instead of throwing to prevent app crashes
+    return [];
   }
 }; 

@@ -28,8 +28,18 @@ The Streak & XP System gamifies email reading by rewarding users with experience
    - Activity logging in `streak_activities` table
    - PostgreSQL functions for analytics
 
+## 📊 Database Schema
 
+### Users Table (Enhanced)
+```sql
+-- Existing fields for streak tracking
+total_xp INTEGER DEFAULT 0,
+current_streak INTEGER DEFAULT 0,
+longest_streak INTEGER DEFAULT 0,
+last_email_check TIMESTAMP WITH TIME ZONE,
+```
 
+### Streak Activities Table (New)
 ```sql
 CREATE TABLE public.streak_activities (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -168,7 +178,7 @@ await resetUserStreak();
 
 ## 📈 Analytics & Insights
 
-
+### Available Queries
 
 ```sql
 -- User's total XP by activity type
@@ -257,3 +267,6 @@ When extending the streak system:
 4. Update this documentation
 5. Add comprehensive tests
 
+---
+
+*Built with ❤️ for engaging user experiences* 
